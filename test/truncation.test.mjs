@@ -302,3 +302,108 @@ test("15. extractMessageText extracts text from parts and content objects safely
     "Part one\nPart two"
   );
 });
+
+test("16. validateFollowUpMessage accepts empty string when chat input is reset or cleared", () => {
+  const clearedInput = "";
+  const result = validateFollowUpMessage(clearedInput);
+  assert.equal(result.valid, true);
+});
+
+test("17. in-progress message missing Section 3 with active streaming part is not classified as truncated", () => {
+  const inProgressMsg = {
+    role: "assistant",
+    parts: [
+      {
+        type: "text",
+        text: "## Incident Summary & Confirmed Facts\nSpike in 504 timeouts on checkout.\n\n## Ranked Root-Cause Hypotheses\n1. Connection pool exhaustion.",
+        state: "streaming"
+      }
+    ]
+  };
+  assert.equal(isAnalysisTruncated(inProgressMsg), false);
+});
+
+test("18. completed message missing Section 3 with done state or no metadata is classified as truncated", () => {
+  const completedIncompleteMsg = {
+    role: "assistant",
+    parts: [
+      {
+        type: "text",
+        text: "## Incident Summary & Confirmed Facts\nSpike in 504 timeouts on checkout.\n\n## Ranked Root-Cause Hypotheses\n1. Connection pool exhaustion.",
+        state: "done"
+      }
+    ]
+  };
+  assert.equal(isAnalysisTruncated(completedIncompleteMsg), true);
+});
+
+test("19. authoritative finishReason: 'length' is classified as truncated even with incomplete sections", () => {
+  const authoritativeTruncatedMsg = {
+    role: "assistant",
+    metadata: { finishReason: "length", truncated: true },
+    parts: [
+      {
+        type: "text",
+        text: "## Incident Summary & Confirmed Facts\nSpike in 504 timeouts.",
+        state: "done"
+      }
+    ]
+  };
+  assert.equal(isAnalysisTruncated(authoritativeTruncatedMsg), true);
+});
+
+test("20. message with error, abort, or cancelled finishReason is not classified as token-limit truncation", () => {
+  const errorMsg = {
+    role: "assistant",
+    metadata: { finishReason: "error" },
+    parts: [
+      {
+        type: "text",
+        text: "## Incident Summary & Confirmed Facts\nSpike in 504 timeouts.",
+        state: "done"
+      }
+    ]
+  };
+  assert.equal(isAnalysisTruncated(errorMsg), false);
+
+  const abortMsg = {
+    role: "assistant",
+    metadata: { finishReason: "abort" },
+    parts: [
+      {
+        type: "text",
+        text: "## Incident Summary & Confirmed Facts\nSpike in 504 timeouts.",
+        state: "done"
+      }
+    ]
+  };
+  assert.equal(isAnalysisTruncated(abortMsg), false);
+
+  const cancelledMsg = {
+    role: "assistant",
+    metadata: { finishReason: "cancelled" },
+    parts: [
+      {
+        type: "text",
+        text: "## Incident Summary & Confirmed Facts\nSpike in 504 timeouts.",
+        state: "done"
+      }
+    ]
+  };
+  assert.equal(isAnalysisTruncated(cancelledMsg), false);
+});
+
+test("21. authoritative finishReason: 'length' takes precedence even if a part still reports streaming state", () => {
+  const authoritativeWithStreamingPart = {
+    role: "assistant",
+    metadata: { finishReason: "length" },
+    parts: [
+      {
+        type: "text",
+        text: "## Incident Summary & Confirmed Facts\nPartial report cut off.",
+        state: "streaming"
+      }
+    ]
+  };
+  assert.equal(isAnalysisTruncated(authoritativeWithStreamingPart), true);
+});

@@ -9,7 +9,7 @@
 export interface AnalysisMessageLike {
   role?: string;
   metadata?: unknown;
-  parts?: Array<{ type?: string; text?: string }>;
+  parts?: Array<{ type?: string; text?: string; state?: string }>;
   content?: string;
 }
 
@@ -97,6 +97,26 @@ export function isAnalysisTruncated(message?: AnalysisMessageLike | null): boole
     if (meta.finishReason === "length" || meta.truncated === true) {
       return true;
     }
+    // Terminal failure states (errors, aborts, cancellations) are distinct from token-limit truncation
+    if (
+      meta.finishReason === "error" ||
+      meta.finishReason === "abort" ||
+      meta.finishReason === "cancelled"
+    ) {
+      return false;
+    }
+  }
+
+  // 2. In-progress check: When authoritative metadata is absent, never classify an active
+  // in-flight message as truncated via structural fallback while any part is actively streaming
+  if (
+    message.parts &&
+    Array.isArray(message.parts) &&
+    message.parts.some(
+      (p) => p && typeof p === "object" && (p as { state?: string }).state === "streaming"
+    )
+  ) {
+    return false;
   }
 
   // 2. Extract full text from message parts or content string

@@ -74,7 +74,7 @@ All checks run offline against local dependencies without requiring network acce
 
 | Check | Command | Description |
 |---|---|---|
-| **Unit Tests** | `node --test test/truncation.test.mjs` | Executes 15 test cases covering truncation detection, metadata evaluation, and structural fallbacks. |
+| **Unit Tests** | `node --test test/truncation.test.mjs` | Executes 21 test cases covering truncation detection, metadata evaluation, and structural fallbacks. |
 | **Linting** | `npm run lint` | Runs `oxlint src/` to verify code quality and style. |
 | **Type Checking** | `npx tsc --noEmit` | Validates TypeScript types across the entire project. |
 | **Production Build** | `npx vite build` | Builds static assets in `dist/client/` and the Cloudflare Worker bundle in `dist/incidentlens/`. |
@@ -126,4 +126,4 @@ Eight transitive findings remain in the dependency tree originating from `agents
 
 - **Implementation**: Complete.
 - **Automated Validation**: All unit tests, linting, type-checking, and production builds pass.
-- **Live Verification**: End-to-end live model inference and live Cloudflare deployment remain unverified pending production environment setup and live testing authorization.
+- **Live Verification**: Local end-to-end inference using remote Cloudflare Workers AI has been verified successfully, including a complete report with `finishReason: "stop"` under the 5,000-token budget. Live production Cloudflare deployment remains unverified and not performed.

@@ -633,6 +633,7 @@ function Chat() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverErrors, setServerErrors] = useState<string[]>([]);
   const [clearError, setClearError] = useState<string | null>(null);
+  const [formResetKey, setFormResetKey] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -652,13 +653,21 @@ function Chat() {
     clearHistory,
     addToolApprovalResponse,
     stop,
-    status
+    status,
+    isStreaming: agentIsStreaming
   } = useAgentChat({
     agent,
     experimental_throttle: 100
   });
 
-  const isStreaming = status === "streaming" || status === "submitted";
+  const activeIncident = agent.state?.activeIncident;
+  const incidentStatus = agent.state?.status || "idle";
+  const isStreaming =
+    agentIsStreaming ||
+    status === "streaming" ||
+    status === "submitted" ||
+    incidentStatus === "analyzing" ||
+    isSubmitting;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -698,6 +707,12 @@ function Chat() {
   const handleClear = async () => {
     setClearError(null);
     setServerErrors([]);
+    setInput("");
+    setShowForm(false);
+    setFormResetKey((k) => k + 1);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
     try {
       // 1. Halt any active stream reception on the client
       stop();
@@ -731,8 +746,6 @@ function Chat() {
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   }, [input, isStreaming, sendMessage]);
 
-  const activeIncident = agent.state?.activeIncident;
-  const incidentStatus = agent.state?.status || "idle";
 
   return (
     <div className="flex flex-col h-screen bg-kumo-elevated relative">
@@ -813,6 +826,7 @@ function Chat() {
           {/* Form shown if no messages yet or if user clicked "New Incident" */}
           {(messages.length === 0 || showForm) && (
             <IncidentForm
+              key={formResetKey}
               connected={connected}
               isSubmitting={isSubmitting || isStreaming}
               onSubmit={handleIncidentSubmit}
@@ -826,8 +840,27 @@ function Chat() {
             const isUser = message.role === "user";
             const isLastAssistant =
               message.role === "assistant" && index === messages.length - 1;
-            const isActivelyStreaming = isLastAssistant && isStreaming;
-            const isTruncated = !isActivelyStreaming && isAnalysisTruncated(message);
+            const hasStreamingParts =
+              message.parts?.some(
+                (p) => "state" in p && p.state === "streaming"
+              ) ?? false;
+            const isActivelyStreaming =
+              (isLastAssistant && isStreaming) || hasStreamingParts;
+            const isTruncated =
+              !isActivelyStreaming && isAnalysisTruncated(message);
+            const meta =
+              message.metadata && typeof message.metadata === "object"
+                ? (message.metadata as Record<string, unknown>)
+                : undefined;
+            const finishReason =
+              typeof meta?.finishReason === "string" ? meta.finishReason : undefined;
+            const isAssistant = message.role === "assistant";
+            const isError =
+              isAssistant && !isActivelyStreaming && finishReason === "error";
+            const isAborted =
+              isAssistant &&
+              !isActivelyStreaming &&
+              (finishReason === "abort" || finishReason === "cancelled");
 
             return (
               <div key={message.id} className="space-y-2">
@@ -927,6 +960,40 @@ function Chat() {
                       </div>
                       <p className="text-kumo-subtle leading-normal">
                         The analysis reached the token limit before completing all diagnostic sections. The partial findings above are preserved, but the report is incomplete. You can ask a follow-up question below to explore specific hypotheses or remaining diagnostic checks.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {isError && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] w-full p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-700 dark:text-red-300">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <XCircleIcon size={16} className="text-red-500 shrink-0" />
+                        <span className="font-semibold text-kumo-default">
+                          Analysis Failed
+                        </span>
+                        <Badge variant="destructive">Error</Badge>
+                      </div>
+                      <p className="text-kumo-subtle leading-normal">
+                        The analysis stopped due to an error. You can retry submitting the incident or ask a follow-up question.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {isAborted && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] w-full p-3.5 rounded-xl bg-kumo-control border border-kumo-line text-xs text-kumo-default">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <StopIcon size={16} className="text-kumo-inactive shrink-0" />
+                        <span className="font-semibold text-kumo-default">
+                          Analysis Cancelled
+                        </span>
+                        <Badge variant="secondary">Cancelled</Badge>
+                      </div>
+                      <p className="text-kumo-subtle leading-normal">
+                        The analysis was stopped before completion.
                       </p>
                     </div>
                   </div>
